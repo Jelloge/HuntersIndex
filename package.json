@@ -1,0 +1,16 @@
+{
+  "name": "comp4601-a1",
+  "version": "1.0.0",
+  "description": "COMP 4601 Assignment 1 - Search Engine",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "crawl-fruits": "node crawl-fruits.js",
+    "crawl-personal": "node crawl-personal.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "express": "^4.21.0",
+    "mongodb": "^6.3.0"
+  }
+}
