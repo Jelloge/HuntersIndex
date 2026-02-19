@@ -71,24 +71,25 @@ class Crawler {
             const content = this.extractContent($, url);
 
             // get all links on the page
-            const links = [];
+            const allLinks = [];
             $('a[href]').each((_, el) => {
               const href = $(el).attr('href');
               if (!href) return;
               try {
                 const abs = new URL(href, url).href.split('#')[0]; // remove fragment
-                if (this.shouldFollow(abs) && !this.visited.has(abs)) {
-                  links.push(abs);
+                if (this.shouldFollow(abs)) {
+                  allLinks.push(abs);
                 }
               } catch (e) {}
             });
 
-            // deduplicate outgoing links
-            const uniqueLinks = [...new Set(links)];
+            // deduplicate outgoing links (store ALL valid links for PageRank / link analysis)
+            const uniqueLinks = [...new Set(allLinks)];
 
             this.pages.set(url, { title, content });
             this.outgoingLinks.set(url, uniqueLinks);
 
+            // only add unvisited links to the crawl queue
             for (const link of uniqueLinks) {
               if (!this.visited.has(link)) {
                 queue.push(link);
