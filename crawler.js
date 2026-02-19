@@ -10,25 +10,37 @@ class Crawler {
     this.maxPages = options.maxPages || 1000;
     this.concurrency = options.concurrency || 5;
     this.extractContent = options.extractContent || defaultExtractContent;
+    this.delay = options.delay || 0; // ms delay between batches
 
     this.visited = new Set();
     this.pages = new Map();
     this.outgoingLinks = new Map();
   }
 
-  // fetches the html content of a url
-  fetch(url) {
+  // fetches the html content of a url with retry on 429
+  fetch(url, retries = 3) {
     return new Promise((resolve, reject) => {
       const mod = url.startsWith('https') ? https : http;
       const req = mod.get(url, {
         timeout: 15000,
-        headers: { 'User-Agent': 'COMP4601-Crawler/1.0' }
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; COMP4601-Crawler/1.0)' }
       }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           const redirectUrl = new URL(res.headers.location, url).href;
-          return this.fetch(redirectUrl).then(resolve).catch(reject);
+          return this.fetch(redirectUrl, retries).then(resolve).catch(reject);
+        }
+        if (res.statusCode === 429 && retries > 0) {
+          // rate limited: wait and retry with increasing backoff
+          const retryAfter = parseInt(res.headers['retry-after']) || (10 * (4 - retries));
+          const waitMs = retryAfter * 1000;
+          console.log(`    429 rate-limited, waiting ${retryAfter}s before retry... (${retries} left)`);
+          res.resume(); // drain the response
+          return setTimeout(() => {
+            this.fetch(url, retries - 1).then(resolve).catch(reject);
+          }, waitMs);
         }
         if (res.statusCode !== 200) {
+          res.resume();
           return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
         }
         let data = '';
@@ -41,14 +53,17 @@ class Crawler {
     });
   }
 
-  // crawls starting from the seed url using bfs
+  // crawls starting from one or more seed urls using bfs
   async crawl(seedUrl, label) {
     this.visited.clear();
     this.pages.clear();
     this.outgoingLinks.clear();
 
-    const queue = [seedUrl];
+    // support single url or array of seed urls
+    const seeds = Array.isArray(seedUrl) ? seedUrl : [seedUrl];
+    const queue = [...seeds];
     let processed = 0;
+    let failed = 0;
 
     while (queue.length > 0 && processed < this.maxPages) {
       const batch = [];
@@ -60,6 +75,11 @@ class Crawler {
       }
       if (batch.length === 0) continue;
 
+      // delay between batches to avoid rate-limiting
+      if (processed > 0 && this.delay > 0) {
+        await new Promise(r => setTimeout(r, this.delay));
+      }
+
       await Promise.allSettled(
         batch.map(async (url) => {
           try {
@@ -67,10 +87,8 @@ class Crawler {
             const $ = cheerio.load(html);
             const title = $('title').text().trim() || '';
 
-            // extract content (paragraph text)
-            const content = this.extractContent($, url);
-
-            // get all links on the page
+            // IMPORTANT: extract links BEFORE content extraction
+            // because extractContent mutates the DOM by removing <a> tags
             const allLinks = [];
             $('a[href]').each((_, el) => {
               const href = $(el).attr('href');
@@ -86,6 +104,9 @@ class Crawler {
             // deduplicate outgoing links (store ALL valid links for PageRank / link analysis)
             const uniqueLinks = [...new Set(allLinks)];
 
+            // extract content AFTER link extraction (extractContent mutates the DOM)
+            const content = this.extractContent($, url);
+
             this.pages.set(url, { title, content });
             this.outgoingLinks.set(url, uniqueLinks);
 
@@ -98,16 +119,17 @@ class Crawler {
 
             processed++;
             if (processed % 20 === 0) {
-              console.log(`  [${label}] Crawled ${processed} pages, queue: ${queue.length}`);
+              console.log(`  [${label}] Crawled ${processed} pages, queue: ${queue.length}, failed: ${failed}`);
             }
           } catch (err) {
-            // silently skip failed pages
+            failed++;
+            console.error(`  [${label}] Failed: ${url} - ${err.message}`);
           }
         })
       );
     }
 
-    console.log(`  [${label}] Crawl complete. ${processed} pages.`);
+    console.log(`  [${label}] Crawl complete. ${processed} pages crawled, ${failed} failed.`);
     return { pages: this.pages, outgoingLinks: this.outgoingLinks };
   }
 }

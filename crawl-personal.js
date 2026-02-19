@@ -4,26 +4,33 @@ const { Crawler, wikiExtractContent } = require('./crawler');
 const MONGO_URL = 'mongodb://localhost:27017';
 const DB_NAME = 'crawler-lab';
 
-// only follow actual wiki article pages
+// only follow actual wiki article pages on the Calamity Mod Wiki
 function shouldFollowWiki(url) {
-  if (!url.startsWith('https://terraria.wiki.gg/wiki/')) return false;
+  if (!url.startsWith('https://calamitymod.wiki.gg/wiki/')) return false;
 
   // skip non-article pages
-  const path = url.replace('https://terraria.wiki.gg/wiki/', '');
+  const path = url.replace('https://calamitymod.wiki.gg/wiki/', '');
   const skipPrefixes = [
     'Special:', 'Talk:', 'User:', 'User_talk:',
     'File:', 'File_talk:', 'Template:', 'Template_talk:',
     'Category:', 'Category_talk:', 'Help:', 'Help_talk:',
-    'Module:', 'Module_talk:', 'MediaWiki:', 'Terraria_Wiki:',
-    'Legacy:', 'action=', 'oldid=',
+    'Module:', 'Module_talk:', 'MediaWiki:',
+    'Calamity_Mod_Wiki:', 'Guide_talk:',
   ];
   for (const prefix of skipPrefixes) {
     if (path.startsWith(prefix) || path.includes('?' + prefix)) return false;
   }
 
-  // skip edit/history/diff urls
+  // skip edit/history/diff/redirect urls
   if (url.includes('action=') || url.includes('oldid=') || url.includes('diff=')) return false;
+  if (url.includes('redirect=')) return false;
   if (url.includes('/wiki/index.php')) return false;
+
+  // skip language-specific subpages (e.g., Page/es, Page/de, Page/yue, Page/zh-hans)
+  if (/\/[a-z]{2,4}(-[a-z]{2,4})?$/.test(path) && path.includes('/')) return false;
+
+  // skip any URL with query parameters (they're usually not article pages)
+  if (url.includes('?')) return false;
 
   return true;
 }
@@ -44,16 +51,28 @@ async function main() {
 
   const crawler = new Crawler({
     maxPages: 1000,
-    concurrency: 3, // being polite to wiki servers
+    concurrency: 1, // one at a time to avoid rate-limiting
+    delay: 1000,     // 1s between requests to be polite
     shouldFollow: shouldFollowWiki,
     extractContent: wikiExtractContent,
   });
 
-  console.log('Crawling Terraria Wiki...');
-  const { pages, outgoingLinks } = await crawler.crawl(
-    'https://terraria.wiki.gg/wiki/Terraria_Wiki',
-    'personal'
-  );
+  // use multiple seed pages to ensure broad coverage (500+ pages)
+  const seeds = [
+    'https://calamitymod.wiki.gg/wiki/Calamity_Mod_Wiki',
+    'https://calamitymod.wiki.gg/wiki/Weapons',
+    'https://calamitymod.wiki.gg/wiki/Enemies',
+    'https://calamitymod.wiki.gg/wiki/Bosses',
+    'https://calamitymod.wiki.gg/wiki/NPCs',
+    'https://calamitymod.wiki.gg/wiki/Armor',
+    'https://calamitymod.wiki.gg/wiki/Accessories',
+    'https://calamitymod.wiki.gg/wiki/Tools',
+    'https://calamitymod.wiki.gg/wiki/Items',
+    'https://calamitymod.wiki.gg/wiki/Biomes',
+  ];
+
+  console.log('Crawling Calamity Mod Wiki...');
+  const { pages, outgoingLinks } = await crawler.crawl(seeds, 'personal');
 
   // compute incoming links
   const incomingLinks = new Map();
