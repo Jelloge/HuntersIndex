@@ -22,6 +22,14 @@ const wordFreqs = {};      // datasetName -> { url -> { word: count } }
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
+// --- Crash guards: keep server alive on unexpected errors ---
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception (server continues):', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection (server continues):', reason);
+});
+
 //  Info endpoint (grading server)
 app.get('/info', (req, res) => {
   res.json({ name: SERVER_NAME });
@@ -46,18 +54,21 @@ function handleSearch(datasetName) {
         return res.status(404).json({ error: 'Dataset not found or not loaded yet' });
       }
 
-      const q = req.query.q || req.query.phrase || '';
+      // robust parameter handling: default gracefully on invalid input
+      const q = (req.query.q || req.query.phrase || '').toString();
       const boost = req.query.boost === 'true';
-      let limit = parseInt(req.query.limit) || 10;
-      limit = Math.max(1, Math.min(50, limit));
+      let limit = parseInt(req.query.limit);
+      if (isNaN(limit) || limit < 1) limit = 10;
+      if (limit > 50) limit = 50;
 
       const results = search(q, index, docs, pageRanks, { boost, limit });
 
       // check if client wants json or html
-      const wantsJSON = (req.headers.accept && req.headers.accept.includes('application/json'))
+      const accept = (req.headers.accept || '').toLowerCase();
+      const wantsJSON = accept.includes('application/json')
         || req.query.format === 'json'
         || !req.headers.accept
-        || req.headers.accept === '*/*';
+        || accept === '*/*';
 
       if (wantsJSON) {
         return res.json({
@@ -105,7 +116,7 @@ app.get('/personal', handleSearch('personal'));
 app.get('/tinyfruits', handleSearch('tinyfruits'));
 app.get('/fruits100', handleSearch('fruits100'));
 
-//  Page detail endpoints 
+//  Page detail endpoints
 function handlePageDetail(datasetName) {
   return (req, res) => {
     try {
@@ -122,7 +133,8 @@ function handlePageDetail(datasetName) {
       // sort word frequencies descending
       const sortedFreqs = Object.entries(freqs).sort((a, b) => b[1] - a[1]);
 
-      const wantsJSON = (req.headers.accept && req.headers.accept.includes('application/json'))
+      const accept = (req.headers.accept || '').toLowerCase();
+      const wantsJSON = accept.includes('application/json')
         || req.query.format === 'json';
 
       if (wantsJSON) {
@@ -169,7 +181,7 @@ app.get('/:datasetName/page/:encodedUrl', handlePageDetail);
 // alternate route for lab 3 compat
 app.get('/:datasetName/pages/:encodedUrl', handlePageDetail);
 
-// Lab 3: popular pages 
+// Lab 3: popular pages
 app.get('/:datasetName/popular', (req, res) => {
   try {
     const docs = datasetDocs[req.params.datasetName];
@@ -190,7 +202,13 @@ app.get('/:datasetName/popular', (req, res) => {
   }
 });
 
-// Helper 
+// --- Express error-handling middleware (must be last) ---
+app.use((err, req, res, next) => {
+  console.error('Express error:', err.message);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// Helper
 function escapeHtml(str) {
   return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -250,10 +268,24 @@ async function loadDataset(name) {
   for (const [url, rank] of pr) {
     pageRanks.set(url, rank);
   }
+
+  // persist PageRank values to MongoDB
+  console.log(`[${name}] Saving PageRank values to DB...`);
+  const bulk = collection.initializeUnorderedBulkOp();
+  for (const d of docs) {
+    const rank = pageRanks.get(d.url) || 0;
+    bulk.find({ url: d.url }).updateOne({ $set: { pageRank: rank } });
+  }
+  try {
+    await bulk.execute();
+  } catch (bulkErr) {
+    console.error(`[${name}] Failed to persist PageRank:`, bulkErr.message);
+  }
+
   console.log(`[${name}] Ready. ${docs.length} pages indexed.`);
 }
 
-// Start 
+// Start
 async function main() {
   console.log('COMP 4601 Assignment 1 - Search Engine\n');
 

@@ -108,7 +108,11 @@
           return;
         }
 
-        resultsDiv.innerHTML = `<h2>${data.result.length} results for "${escapeHtml(q)}" in ${dataset}${boost ? ' (boosted)' : ''}</h2>`;
+        const relevantCount = data.result.filter(r => r.score > 0).length;
+        const header = relevantCount > 0
+          ? `${data.result.length} results for "${escapeHtml(q)}" in ${dataset}${boost ? ' (boosted)' : ''}`
+          : `No exact matches for "${escapeHtml(q)}" in ${dataset} — showing ${data.result.length} pages`;
+        resultsDiv.innerHTML = `<h2>${header}</h2>`;
 
         data.result.forEach((r, i) => {
           const card = document.createElement('div');
