@@ -4,8 +4,6 @@
 function computePageRank(pages, outgoingLinks) {
   const alpha = 0.1;
   const threshold = 0.0001;
-
-  // build url-to-index mapping
   const urls = [...pages.keys()];
   const N = urls.length;
   const urlIndex = new Map();
@@ -31,7 +29,7 @@ function computePageRank(pages, outgoingLinks) {
     }
   }
 
-  // build transition matrix: M = (1-alpha)*adj + (alpha/N) for all entries
+  // build transition matrix for all entries
   const M = Array.from({ length: N }, () => new Float64Array(N));
   const alphaOverN = alpha / N;
   const oneMinusAlpha = 1 - alpha;

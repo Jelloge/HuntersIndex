@@ -30,11 +30,11 @@ class Crawler {
           return this.fetch(redirectUrl, retries).then(resolve).catch(reject);
         }
         if (res.statusCode === 429 && retries > 0) {
-          // rate limited: wait and retry with increasing backoff
+          // rate limited here
           const retryAfter = parseInt(res.headers['retry-after']) || (10 * (4 - retries));
           const waitMs = retryAfter * 1000;
           console.log(`    429 rate-limited, waiting ${retryAfter}s before retry... (${retries} left)`);
-          res.resume(); // drain the response
+          res.resume(); // drain
           return setTimeout(() => {
             this.fetch(url, retries - 1).then(resolve).catch(reject);
           }, waitMs);
@@ -87,8 +87,7 @@ class Crawler {
             const $ = cheerio.load(html);
             const title = $('title').text().trim() || '';
 
-            // IMPORTANT: extract links BEFORE content extraction
-            // because extractContent mutates the DOM by removing <a> tags
+            // because extractContent mutates the DOM
             const allLinks = [];
             $('a[href]').each((_, el) => {
               const href = $(el).attr('href');
