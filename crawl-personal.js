@@ -4,18 +4,18 @@ const { Crawler, wikiExtractContent } = require('./crawler');
 const MONGO_URL = 'mongodb://localhost:27017';
 const DB_NAME = 'crawler-lab';
 
-// only follow actual wiki article pages on the Calamity Mod Wiki
+// only follow actual wiki article pages on the Monster Hunter Wiki
 function shouldFollowWiki(url) {
-  if (!url.startsWith('https://calamitymod.wiki.gg/wiki/')) return false;
+  if (!url.startsWith('https://monsterhunterwiki.org/wiki/')) return false;
 
   // skip non-article pages
-  const path = url.replace('https://calamitymod.wiki.gg/wiki/', '');
+  const path = url.replace('https://monsterhunterwiki.org/wiki/', '');
   const skipPrefixes = [
     'Special:', 'Talk:', 'User:', 'User_talk:',
     'File:', 'File_talk:', 'Template:', 'Template_talk:',
     'Category:', 'Category_talk:', 'Help:', 'Help_talk:',
     'Module:', 'Module_talk:', 'MediaWiki:',
-    'Calamity_Mod_Wiki:', 'Guide_talk:',
+    'Monster_Hunter_Wiki:', 'MHWiki:',
   ];
   for (const prefix of skipPrefixes) {
     if (path.startsWith(prefix) || path.includes('?' + prefix)) return false;
@@ -59,19 +59,19 @@ async function main() {
 
   // use multiple seed pages to ensure broad coverage (500+ pages)
   const seeds = [
-    'https://calamitymod.wiki.gg/wiki/Calamity_Mod_Wiki',
-    'https://calamitymod.wiki.gg/wiki/Weapons',
-    'https://calamitymod.wiki.gg/wiki/Enemies',
-    'https://calamitymod.wiki.gg/wiki/Bosses',
-    'https://calamitymod.wiki.gg/wiki/NPCs',
-    'https://calamitymod.wiki.gg/wiki/Armor',
-    'https://calamitymod.wiki.gg/wiki/Accessories',
-    'https://calamitymod.wiki.gg/wiki/Tools',
-    'https://calamitymod.wiki.gg/wiki/Items',
-    'https://calamitymod.wiki.gg/wiki/Biomes',
+    'https://monsterhunterwiki.org/wiki/Main_Page',
+    'https://monsterhunterwiki.org/wiki/Monster_List',
+    'https://monsterhunterwiki.org/wiki/Weapons',
+    'https://monsterhunterwiki.org/wiki/Armor',
+    'https://monsterhunterwiki.org/wiki/Games',
+    'https://monsterhunterwiki.org/wiki/Skills',
+    'https://monsterhunterwiki.org/wiki/Items',
+    'https://monsterhunterwiki.org/wiki/Locations',
+    'https://monsterhunterwiki.org/wiki/Quests',
+    'https://monsterhunterwiki.org/wiki/Characters',
   ];
 
-  console.log('Crawling Calamity Mod Wiki...');
+  console.log('Crawling Monster Hunter Wiki...');
   const { pages, outgoingLinks } = await crawler.crawl(seeds, 'personal');
 
   // compute incoming links
