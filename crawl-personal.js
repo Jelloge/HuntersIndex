@@ -26,7 +26,7 @@ function shouldFollowWiki(url) {
   if (url.includes('redirect=')) return false;
   if (url.includes('/wiki/index.php')) return false;
 
-  // skip language-specific subpages (e.g., Page/es, Page/de, Page/yue, Page/zh-hans)
+  // skip language-specific subpages
   if (/\/[a-z]{2,4}(-[a-z]{2,4})?$/.test(path) && path.includes('/')) return false;
 
   // skip any URL with query parameters (they're usually not article pages)

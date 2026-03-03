@@ -22,7 +22,7 @@ const wordFreqs = {};      // datasetName -> { url -> { word: count } }
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// --- Crash guards: keep server alive on unexpected errors ---
+// Crash guards: keep server alive on unexpected errors 
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception (server continues):', err.message);
 });
@@ -117,9 +117,9 @@ app.get('/tinyfruits', handleSearch('tinyfruits'));
 app.get('/fruits100', handleSearch('fruits100'));
 
 //  Page detail endpoints
-function handlePageDetail(datasetName) {
-  return (req, res) => {
+function handlePageDetail(req, res) {
     try {
+      const datasetName = req.params.datasetName;
       const url = decodeURIComponent(req.params.encodedUrl);
       const docs = datasetDocs[datasetName];
       if (!docs) return res.status(404).json({ error: 'Dataset not found' });
@@ -174,7 +174,6 @@ function handlePageDetail(datasetName) {
       console.error('Page detail error:', err);
       res.status(500).json({ error: 'Failed to load page data' });
     }
-  };
 }
 
 app.get('/:datasetName/page/:encodedUrl', handlePageDetail);

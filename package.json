@@ -1,7 +1,7 @@
 {
   "name": "comp4601-a1",
   "version": "1.0.0",
-  "description": "COMP 4601 Assignment 1 - Search Engine",
+  "description": "COMP 4601 Assignment 1",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
