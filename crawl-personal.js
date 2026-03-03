@@ -50,7 +50,7 @@ async function main() {
   }
 
   const crawler = new Crawler({
-    maxPages: 1000,
+    maxPages: 30000,
     concurrency: 1, // one at a time to avoid rate-limiting
     delay: 1000,     // 1s between requests to be polite
     shouldFollow: shouldFollowWiki,

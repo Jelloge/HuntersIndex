@@ -78,7 +78,9 @@ function search(query, index, docs, pageRanks, options = {}) {
       return Math.log2(1 + tf) * (idf.get(qw) || 0);
     });
 
-    // cosine similarity
+    // cosine similarity weighted by document TF-IDF magnitude
+    // pure cosine loses term-frequency signal (single-word queries always = 1.0)
+    // so we scale by magD to reward docs with higher TF for the query terms
     let dot = 0, magQ = 0, magD = 0;
     for (let i = 0; i < queryWords.length; i++) {
       dot += queryVector[i] * docVector[i];
@@ -87,12 +89,15 @@ function search(query, index, docs, pageRanks, options = {}) {
     }
     magQ = Math.sqrt(magQ);
     magD = Math.sqrt(magD);
-    let score = (magQ === 0 || magD === 0) ? 0 : dot / (magQ * magD);
+    const cosine = (magQ === 0 || magD === 0) ? 0 : dot / (magQ * magD);
+    let score = cosine * magD;
 
     // apply pagerank boost if requested
+    // log-scale the normalized PR so high-PR pages get a moderate boost
+    // without overwhelming TF-IDF relevance
     const pr = pageRanks.get(d.url) || 0;
     if (boost && pr > 0) {
-      score = score * pr;
+      score = score * (1 + Math.log(1 + pr * N));
     }
 
     return { url: d.url, score, title: d.title, pr };

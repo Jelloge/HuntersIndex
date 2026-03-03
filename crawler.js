@@ -7,7 +7,7 @@ class Crawler {
   constructor(options = {}) {
     this.shouldFollow = options.shouldFollow || (() => true);
     // max number of pages to crawl
-    this.maxPages = options.maxPages || 1000;
+    this.maxPages = options.maxPages || 40000;
     this.concurrency = options.concurrency || 5;
     this.extractContent = options.extractContent || defaultExtractContent;
     this.delay = options.delay || 0; // ms delay between batches

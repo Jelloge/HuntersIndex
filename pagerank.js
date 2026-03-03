@@ -1,6 +1,8 @@
 // computes pagerank for a set of pages using power iteration
 // alpha = 0.1, converge when euclidean distance < 0.0001
 
+// there's a problem where pagerank doesn't properly compute the relevancy of the links, make sure to double check why
+
 function computePageRank(pages, outgoingLinks) {
   const alpha = 0.1;
   const threshold = 0.0001;
