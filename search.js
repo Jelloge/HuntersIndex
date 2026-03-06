@@ -62,6 +62,8 @@ function search(query, index, docs, pageRanks, options = {}) {
     return Math.log2(1 + tf) * (idf.get(qw) || 0);
   });
 
+  const queryNorm = queryWords.join(' ');
+
   // score each document
   const results = docs.map(d => {
     const words = docWords.get(d.url) || [];
@@ -97,6 +99,29 @@ function search(query, index, docs, pageRanks, options = {}) {
     const pr = pageRanks.get(d.url) || 0;
     if (boost && pr > 0) {
       score = score * (1 + Math.log(1 + pr * N));
+    }
+
+    // title relevance boost — pages whose title matches the query should rank higher
+    // strip suffixes like " - Monster Hunter Wiki" before comparing
+    if (score > 0) {
+      const titleStripped = (d.title || '').toLowerCase()
+        .replace(/\s+[-\u2013\u2014].+$/, '')
+        .trim();
+      const titleWords = titleStripped.split(/\s+/).filter(w => w.length > 0);
+      // normalize each word to a-z0-9 for matching against query terms
+      const titleNorm = titleWords.map(w => w.replace(/[^a-z0-9]/g, '')).filter(w => w.length > 0);
+      const titleTokens = new Set(titleNorm);
+      const titleHits = queryWords.filter(qw => titleTokens.has(qw)).length;
+      if (titleHits > 0) {
+        const ratio = titleHits / queryWords.length;
+        // use raw word count to check exact match (avoids false positives
+        // when unicode chars like α/β get stripped during normalization)
+        if (titleWords.length === queryWords.length && titleHits === queryWords.length) {
+          score *= 3;
+        } else {
+          score *= (1 + ratio);
+        }
+      }
     }
 
     return { url: d.url, score, title: d.title, pr };
