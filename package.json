@@ -1,7 +1,7 @@
 {
-  "name": "comp4601-a1",
+  "name": "hunters-index",
   "version": "1.0.0",
-  "description": "COMP 4601 Assignment 1",
+  "description": "COMP 4601 Assignment 1 - Monster Hunter Wiki Search Engine",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

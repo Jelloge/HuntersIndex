@@ -23,7 +23,7 @@ function buildIndex(docs) {
   return { N, docWords, df, idf };
 }
 
-// performs a search query, returns results with url, score, title, pr
+// search query, returns ranked results
 function search(query, index, docs, pageRanks, options = {}) {
   const { boost = false, limit = 10 } = options;
   const { N, docWords, df, idf } = index;
@@ -32,13 +32,13 @@ function search(query, index, docs, pageRanks, options = {}) {
   const totalQueryWords = allQueryWords.length;
 
   if (totalQueryWords === 0) {
-    // return `limit` results with score 0
+    // no query so just return limit results with score 0
     return docs.slice(0, limit).map(d => ({
       url: d.url, score: 0, title: d.title, pr: pageRanks.get(d.url) || 0,
     }));
   }
 
-  // filter out words not in any document, deduplicate preserving order
+  // filter out words not in any document, deduplicate
   const seen = new Set();
   const queryWords = [];
   for (const w of allQueryWords) {
@@ -54,7 +54,7 @@ function search(query, index, docs, pageRanks, options = {}) {
     }));
   }
 
-  // build query tfidf vector (denominator = total original words)
+  // build query tfidf vector
   const queryVector = queryWords.map(qw => {
     let count = 0;
     for (const w of allQueryWords) { if (w === qw) count++; }
@@ -62,12 +62,12 @@ function search(query, index, docs, pageRanks, options = {}) {
     return Math.log2(1 + tf) * (idf.get(qw) || 0);
   });
 
-  // compute cosine similarity for each document
+  // score each document
   const results = docs.map(d => {
     const words = docWords.get(d.url) || [];
     const totalWords = words.length || 1;
 
-    // count word occurrences in this doc
+    // count how many times each query word appears in this doc
     const counts = new Map();
     for (const w of words) counts.set(w, (counts.get(w) || 0) + 1);
 
@@ -78,9 +78,9 @@ function search(query, index, docs, pageRanks, options = {}) {
       return Math.log2(1 + tf) * (idf.get(qw) || 0);
     });
 
-    // cosine similarity weighted by document TF-IDF magnitude
-    // pure cosine loses term-frequency signal (single-word queries always = 1.0)
-    // so we scale by magD to reward docs with higher TF for the query terms
+    // cosine similarity * magD
+    // we multiply by magD because pure cosine gives 1.0 for every doc on single word queries
+    // which doesnt really help rank anything. magD keeps the tf-idf weight in the score
     let dot = 0, magQ = 0, magD = 0;
     for (let i = 0; i < queryWords.length; i++) {
       dot += queryVector[i] * docVector[i];
@@ -92,9 +92,8 @@ function search(query, index, docs, pageRanks, options = {}) {
     const cosine = (magQ === 0 || magD === 0) ? 0 : dot / (magQ * magD);
     let score = cosine * magD;
 
-    // apply pagerank boost if requested
-    // log-scale the normalized PR so high-PR pages get a moderate boost
-    // without overwhelming TF-IDF relevance
+    // pagerank boost — log scale so high-pr pages dont just dominate everything
+    // pr * N normalizes it so an average page is around 1, then log compresses the range
     const pr = pageRanks.get(d.url) || 0;
     if (boost && pr > 0) {
       score = score * (1 + Math.log(1 + pr * N));
@@ -106,7 +105,7 @@ function search(query, index, docs, pageRanks, options = {}) {
   // sort by score descending
   results.sort((a, b) => b.score - a.score);
 
-  // return exactly `limit` results (even if score is 0)
+  // return exactly limit results even if some have score 0
   return results.slice(0, limit);
 }
 

@@ -6,18 +6,17 @@ const { URL } = require('url');
 class Crawler {
   constructor(options = {}) {
     this.shouldFollow = options.shouldFollow || (() => true);
-    // max number of pages to crawl
     this.maxPages = options.maxPages || 40000;
     this.concurrency = options.concurrency || 5;
     this.extractContent = options.extractContent || defaultExtractContent;
-    this.delay = options.delay || 0; // ms delay between batches
+    this.delay = options.delay || 0; // ms between batches
 
     this.visited = new Set();
     this.pages = new Map();
     this.outgoingLinks = new Map();
   }
 
-  // fetches the html content of a url with retry on 429
+  // fetches html from a url, retries on 429
   fetch(url, retries = 3) {
     return new Promise((resolve, reject) => {
       const mod = url.startsWith('https') ? https : http;
@@ -30,11 +29,11 @@ class Crawler {
           return this.fetch(redirectUrl, retries).then(resolve).catch(reject);
         }
         if (res.statusCode === 429 && retries > 0) {
-          // rate limited here
+          // rate limited, back off and retry
           const retryAfter = parseInt(res.headers['retry-after']) || (10 * (4 - retries));
           const waitMs = retryAfter * 1000;
           console.log(`    429 rate-limited, waiting ${retryAfter}s before retry... (${retries} left)`);
-          res.resume(); // drain
+          res.resume();
           return setTimeout(() => {
             this.fetch(url, retries - 1).then(resolve).catch(reject);
           }, waitMs);
@@ -53,13 +52,12 @@ class Crawler {
     });
   }
 
-  // crawls starting from one or more seed urls using bfs
+  // bfs crawl starting from seed url(s)
   async crawl(seedUrl, label) {
     this.visited.clear();
     this.pages.clear();
     this.outgoingLinks.clear();
 
-    // support single url or array of seed urls
     const seeds = Array.isArray(seedUrl) ? seedUrl : [seedUrl];
     const queue = [...seeds];
     let processed = 0;
@@ -75,7 +73,7 @@ class Crawler {
       }
       if (batch.length === 0) continue;
 
-      // delay between batches to avoid rate-limiting
+      // wait between batches so we dont get rate limited
       if (processed > 0 && this.delay > 0) {
         await new Promise(r => setTimeout(r, this.delay));
       }
@@ -87,29 +85,29 @@ class Crawler {
             const $ = cheerio.load(html);
             const title = $('title').text().trim() || '';
 
-            // because extractContent mutates the DOM
+            // have to grab links BEFORE extractContent because it mutates the dom
+            // spent way too long debugging this lol
             const allLinks = [];
             $('a[href]').each((_, el) => {
               const href = $(el).attr('href');
               if (!href) return;
               try {
-                const abs = new URL(href, url).href.split('#')[0]; // remove fragment
+                const abs = new URL(href, url).href.split('#')[0];
                 if (this.shouldFollow(abs)) {
                   allLinks.push(abs);
                 }
               } catch (e) {}
             });
 
-            // deduplicate outgoing links (store ALL valid links for PageRank / link analysis)
             const uniqueLinks = [...new Set(allLinks)];
 
-            // extract content AFTER link extraction (extractContent mutates the DOM)
+            // now extract content (this removes <a> tags and stuff)
             const content = this.extractContent($, url);
 
             this.pages.set(url, { title, content });
             this.outgoingLinks.set(url, uniqueLinks);
 
-            // only add unvisited links to the crawl queue
+            // add new links to the queue
             for (const link of uniqueLinks) {
               if (!this.visited.has(link)) {
                 queue.push(link);
@@ -133,7 +131,7 @@ class Crawler {
   }
 }
 
-// default: extract text from <p> tags, remove links
+// default content extractor — just grabs text from <p> tags
 function defaultExtractContent($, url) {
   const $copy = cheerio.load($.html());
   $copy('a').remove();
@@ -142,13 +140,12 @@ function defaultExtractContent($, url) {
   return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-// for wiki pages: extract from article body paragraphs only
+// wiki-specific extractor — targets .mw-parser-output and strips out navboxes etc
 function wikiExtractContent($, url) {
-  // wiki content is usually inside .mw-parser-output
   const $content = $('.mw-parser-output');
   if ($content.length === 0) return defaultExtractContent($, url);
 
-  // remove navboxes, infoboxes, tables, edit links, references
+  // get rid of all the wiki junk we dont want indexed
   $content.find('.navbox, .infobox, table, .mw-editsection, .reflist, .reference, .toc, script, style').remove();
   $content.find('a').remove();
 

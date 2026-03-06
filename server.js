@@ -12,17 +12,17 @@ const SERVER_NAME = process.env.SERVER_NAME || 'FrodoBilberry9534';
 
 let db = null;
 
-// in-memory data after loading from db
+// all the data lives in memory after we load it from the db
 const datasetDocs = {};    // datasetName -> [{url, title, content, outgoingLinks, incomingLinks}]
 const searchIndexes = {};  // datasetName -> index
 const pageRanks = new Map(); // url -> pagerank value
 const wordFreqs = {};      // datasetName -> { url -> { word: count } }
 
-// serve static files for browser ui
+// serve static files for the browser ui
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Crash guards: keep server alive on unexpected errors 
+// crash guards so the server doesnt die on random errors
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception (server continues):', err.message);
 });
@@ -30,12 +30,12 @@ process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection (server continues):', reason);
 });
 
-//  Info endpoint (grading server)
+// info endpoint for the grading server
 app.get('/info', (req, res) => {
   res.json({ name: SERVER_NAME });
 });
 
-//  PageRank endpoint (lab 5 + A1)
+// pagerank lookup endpoint
 app.get('/pageranks', (req, res) => {
   const url = req.query.url;
   if (!url) return res.status(400).send('Missing url parameter');
@@ -44,7 +44,7 @@ app.get('/pageranks', (req, res) => {
   res.type('text/plain').send(rank.toString());
 });
 
-// Search endpoints
+// search handler — returns a middleware for the given dataset
 function handleSearch(datasetName) {
   return (req, res) => {
     try {
@@ -54,7 +54,7 @@ function handleSearch(datasetName) {
         return res.status(404).json({ error: 'Dataset not found or not loaded yet' });
       }
 
-      // robust parameter handling: default gracefully on invalid input
+      // handle params, default gracefully if something weird comes in
       const q = (req.query.q || req.query.phrase || '').toString();
       const boost = req.query.boost === 'true';
       let limit = parseInt(req.query.limit);
@@ -63,7 +63,7 @@ function handleSearch(datasetName) {
 
       const results = search(q, index, docs, pageRanks, { boost, limit });
 
-      // check if client wants json or html
+      // figure out if client wants json or html
       const accept = (req.headers.accept || '').toLowerCase();
       const wantsJSON = accept.includes('application/json')
         || req.query.format === 'json'
@@ -81,7 +81,7 @@ function handleSearch(datasetName) {
         });
       }
 
-      // html response for browser
+      // html fallback for when you hit it in the browser directly
       const resultsHtml = results.map((r, i) => `
         <div class="result">
           <h3>${i + 1}. <a href="${r.url}" target="_blank">${escapeHtml(r.title || r.url)}</a></h3>
@@ -112,11 +112,11 @@ function handleSearch(datasetName) {
 app.get('/fruitsA', handleSearch('fruitsA'));
 app.get('/personal', handleSearch('personal'));
 
-// keep lab 3/4/5 compatibility
+// keep these around for lab 3/4/5 compat
 app.get('/tinyfruits', handleSearch('tinyfruits'));
 app.get('/fruits100', handleSearch('fruits100'));
 
-//  Page detail endpoints
+// page detail — shows all the data we have on a specific page
 function handlePageDetail(req, res) {
     try {
       const datasetName = req.params.datasetName;
@@ -130,7 +130,7 @@ function handlePageDetail(req, res) {
       const pr = pageRanks.get(url) || 0;
       const freqs = (wordFreqs[datasetName] && wordFreqs[datasetName][url]) || {};
 
-      // sort word frequencies descending
+      // sort word frequencies high to low
       const sortedFreqs = Object.entries(freqs).sort((a, b) => b[1] - a[1]);
 
       const accept = (req.headers.accept || '').toLowerCase();
@@ -148,7 +148,7 @@ function handlePageDetail(req, res) {
         });
       }
 
-      // html response
+      // html view
       const inHtml = (doc.incomingLinks || []).map(l => `<li><a href="/${datasetName}/page/${encodeURIComponent(l)}">${escapeHtml(l)}</a></li>`).join('');
       const outHtml = (doc.outgoingLinks || []).map(l => `<li><a href="/${datasetName}/page/${encodeURIComponent(l)}">${escapeHtml(l)}</a></li>`).join('');
       const freqHtml = sortedFreqs.slice(0, 50).map(([w, c]) => `<tr><td>${escapeHtml(w)}</td><td>${c}</td></tr>`).join('');
@@ -177,10 +177,9 @@ function handlePageDetail(req, res) {
 }
 
 app.get('/:datasetName/page/:encodedUrl', handlePageDetail);
-// alternate route for lab 3 compat
-app.get('/:datasetName/pages/:encodedUrl', handlePageDetail);
+app.get('/:datasetName/pages/:encodedUrl', handlePageDetail); // lab 3 compat
 
-// Lab 3: popular pages
+// top 10 pages by incoming link count
 app.get('/:datasetName/popular', (req, res) => {
   try {
     const docs = datasetDocs[req.params.datasetName];
@@ -201,18 +200,17 @@ app.get('/:datasetName/popular', (req, res) => {
   }
 });
 
-// --- Express error-handling middleware (must be last) ---
+// catch-all error handler
 app.use((err, req, res, next) => {
   console.error('Express error:', err.message);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Helper
 function escapeHtml(str) {
   return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Data Loading
+// loads a dataset from mongodb into memory and builds all the indexes
 async function loadDataset(name) {
   const collection = db.collection(`${name}_pages`);
   const count = await collection.countDocuments();
@@ -224,7 +222,8 @@ async function loadDataset(name) {
   console.log(`[${name}] Loading ${count} pages from DB...`);
   const docs = await collection.find({}).toArray();
 
-  // compute incoming links from outgoing links if not already stored
+  // figure out incoming links from outgoing links
+  // basically reverse the link graph
   const incomingMap = new Map();
   for (const d of docs) {
     if (!incomingMap.has(d.url)) incomingMap.set(d.url, []);
@@ -239,14 +238,13 @@ async function loadDataset(name) {
     }
   }
 
-  // store docs
   datasetDocs[name] = docs;
 
-  // build search index
+  // build tfidf index
   console.log(`[${name}] Building search index...`);
   searchIndexes[name] = buildIndex(docs);
 
-  // compute word frequencies for each page
+  // word frequencies for each page (for the page detail view)
   wordFreqs[name] = {};
   for (const d of docs) {
     const words = (d.content || '').split(/\s+/).filter(w => w.length > 0);
@@ -268,7 +266,7 @@ async function loadDataset(name) {
     pageRanks.set(url, rank);
   }
 
-  // persist PageRank values to MongoDB
+  // save pagerank back to mongo so its persisted
   console.log(`[${name}] Saving PageRank values to DB...`);
   const bulk = collection.initializeUnorderedBulkOp();
   for (const d of docs) {
@@ -284,7 +282,6 @@ async function loadDataset(name) {
   console.log(`[${name}] Ready. ${docs.length} pages indexed.`);
 }
 
-// Start
 async function main() {
   console.log('COMP 4601 Assignment 1 - Search Engine\n');
 
