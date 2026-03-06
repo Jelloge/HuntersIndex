@@ -2,8 +2,6 @@
 
 Search engine for the Monster Hunter Wiki. Crawls, indexes, and ranks wiki pages using TF-IDF and PageRank, providing relevance-ranked search across monsters, weapons, armor, items, and more.
 
-COMP 4601 - Assignment 1
-
 ## Setup
 
 ### Prerequisites
